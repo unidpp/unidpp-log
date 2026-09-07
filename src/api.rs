@@ -1,6 +1,6 @@
 //! HTTP surface: axum router, handlers, `Config`, `TestServer`.
 //!
-//! Endpoints (TODO.impl item 21 — the minimal credible anchor):
+//! Endpoints (the UniDPP service design — the minimal credible anchor):
 //!
 //! - `POST /commitments` — sequence a subject identity + commitment
 //!   hash; returns the signed inclusion receipt;
@@ -225,7 +225,7 @@ async fn discovery(State(app): State<Arc<AppState>>) -> Response {
         },
         "quorum": {
             "now": "M=1 of K=1 — one honest operator (see README)",
-            "later": "M-of-K log-of-logs per PLAN-OPERATORS.md 6; unidpp-signatif already implements the master quorum verification",
+            "later": "M-of-K log-of-logs per the UniDPP operator model 6; unidpp-signatif already implements the master quorum verification",
             "deployment": "Durable Objects (sequencing) + R2 segments on Cloudflare is the documented succession path"
         }
     });

@@ -3,7 +3,7 @@
 The UniDPP **transparency-log anchor service**: a minimal, honest
 operator that sequences Merkle commitments and issues signed
 inclusion receipts. Part of [UniDPP](https://github.com/unidpp);
-implements TODO.impl `10-remaining-tasks-definitive.md` item 21.
+part of UniDPP `10-remaining-tasks-definitive.md` item 21.
 Apache-2.0.
 
 ## What this is (and what it deliberately is not)
@@ -16,7 +16,7 @@ trust-anchoring primitive that turns UniDPP's I4/I9 invariants
 verdicts that say what was reachable") from assertions into
 demonstrable facts.
 
-This binary is **not** the final M-of-K quorum. PLAN-OPERATORS.md §6
+This binary is **not** the final M-of-K quorum. operator-model §6
 documents the Cloudflare succession path (Durable Objects for
 sequencing + R2 for segments) and signatif already implements the
 master-quorum verification (`unidpp_signatif::anchor::LogOfLogs`,
@@ -46,18 +46,18 @@ This service supplies the third piece — the *substitute for the
 origin* — in three concrete steps:
 
 1. When the issuer mints a passport it also POSTs a salted commitment
-   to one (or many) transparency logs. Each service hands back a
-   **signed inclusion receipt** bound to a specific operator key.
+ to one (or many) transparency logs. Each service hands back a
+ **signed inclusion receipt** bound to a specific operator key.
 2. The verifier carries the passport's **Tier-A bytes** offline, plus
-   the inclusion receipt and the log's operator public key (pinned in
-   a discovery document the resolver published in advance, or held in
-   the trust bundle). Cached locally — no network required.
+ the inclusion receipt and the log's operator public key (pinned in
+ a discovery document the resolver published in advance, or held in
+ the trust bundle). Cached locally — no network required.
 3. As the underlying log grows (more issuers commit, more entries
-   stream in), the receipt's pinned head moves out of date but its
-   commitment does not: `GET /tree/consistency?from=<receipt_size>`
-   returns the RFC 6962 consistency proof that ties the receipt's
-   pinned root to the current signed tree head. Verification rebuilds
-   without ever touching the issuer.
+ stream in), the receipt's pinned head moves out of date but its
+ commitment does not: `GET /tree/consistency?from=<receipt_size>`
+ returns the RFC 6962 consistency proof that ties the receipt's
+ pinned root to the current signed tree head. Verification rebuilds
+ without ever touching the issuer.
 
 The result is a **verifier with offline origin**: the receipt is
 self-verifying against the operator's published key, and a tamper by
@@ -73,12 +73,12 @@ The full receipt is the JSON body of `POST /commitments` (or
 
 - `commitment` — the anchored 64-hex SHA-256 value (salted by the issuer);
 - `inclusion` — the RFC 6962 inclusion proof at the issuance tree size
-  (leaf index, tree size, leaf hash, sibling chain);
+ (leaf index, tree size, leaf hash, sibling chain);
 - `tree_head` — the operator's signed tree head at issuance
-  (log id, tree size, timestamp, root, signature over all four);
+ (log id, tree size, timestamp, root, signature over all four);
 - `operator` — the operator public key (suite, key id, raw hex +
-  fingerprint) so the receipt is self-contained for an offline
-  verifier that trusts the key it already holds.
+ fingerprint) so the receipt is self-contained for an offline
+ verifier that trusts the key it already holds.
 
 Verification (the verifier's whole job):
 
@@ -88,7 +88,7 @@ sth.verify(operator)?;
 // 2. The inclusion proof must reconstruct the head's root.
 verify_inclusion(commitment, proof, sth.root)?;
 // 3. If the log has grown since issuance, verify the consistency
-//    proof from sth.tree_size ties sth.root to the current head.
+// proof from sth.tree_size ties sth.root to the current head.
 verify_consistency(sth.tree_size, &sth.root, new_size, &new_root, &path)?;
 ```
 
@@ -172,27 +172,27 @@ must not paper over it.
 
 ## M-of-K quorum design (the succession story)
 
-PLAN-OPERATORS.md §6 sketches the Cloudflare deployment
+operator-model §6 sketches the Cloudflare deployment
 (`<https://unidpp.org>` zone active, platform greenfield). The
 phased target:
 
 1. **Now (this binary)**: M=1 of K=1. One honest operator. Receipts
-   are verifiable against one key, forever; the journal does not
-   lie about what the operator sequenced.
+ are verifiable against one key, forever; the journal does not
+ lie about what the operator sequenced.
 2. **Wave 4c**: M-of-K independent witness logs. This binary runs
-   as one of the K witnesses, signs the same STHs into a Cloudflare
-   **Durable Object** (the per-log sequencer) and writes sealed
-   segments into **R2** (the durable, append-only store); the
-   uniformity of the append shape (`{seq, logged_at, commitment}`)
-   means the R2 segment files are identical in format to the JSONL
-   journal here — it is a storage-port, not a model-port.
+ as one of the K witnesses, signs the same STHs into a Cloudflare
+ **Durable Object** (the per-log sequencer) and writes sealed
+ segments into **R2** (the durable, append-only store); the
+ uniformity of the append shape (`{seq, logged_at, commitment}`)
+ means the R2 segment files are identical in format to the JSONL
+ journal here — it is a storage-port, not a model-port.
 3. **Master list**: the witnesses' STHs are anchored into a master
-   log (`unidpp_signatif::LogOfLogs`, `verify_master_quorum`).
-   Admission, rotation, and ejection are threshold ceremonies;
-   distrust windows cascade correctly (void-ab-initio semantics
-   implemented and tested in unidpp-signatif). Verifiers pin M of
-   the K distinct witnesses and check the master root, the same way
-   they currently pin this single operator.
+ log (`unidpp_signatif::LogOfLogs`, `verify_master_quorum`).
+ Admission, rotation, and ejection are threshold ceremonies;
+ distrust windows cascade correctly (void-ab-initio semantics
+ implemented and tested in unidpp-signatif). Verifiers pin M of
+ the K distinct witnesses and check the master root, the same way
+ they currently pin this single operator.
 
 The wire formats — STH bytes, inclusion proof shape, journal line
 schema — are all chosen so step 1's receipts are *already* reusable
@@ -202,10 +202,10 @@ as witness material in step 3. The semantic upgrade is the
 ## Build & test
 
 ```
-cargo fmt --check   # clean
-cargo build         # zero warnings (RUSTFLAGS="-D warnings" passes)
-cargo test          # 17 unit + 10 integration, zero warnings
-cargo clippy --all-targets -- -D warnings  # clean
+cargo fmt --check # clean
+cargo build # zero warnings (RUSTFLAGS="-D warnings" passes)
+cargo test # 17 unit + 10 integration, zero warnings
+cargo clippy --all-targets -- -D warnings # clean
 ```
 
 Unit tests cover the model semantics (receipt assembly → STH
@@ -234,17 +234,17 @@ timestamps match journal stamps.
 ## Deviations from the rubric (documented)
 
 - **No `GET /entries` or equivalents.** I12 (enumeration resistance):
-  a transparency log is verifiable without being browsable.
-  Submitters carry their subject identity; the log carries only the
-  commitment + the opaque `salt_ref` they supplied.
+ a transparency log is verifiable without being browsable.
+ Submitters carry their subject identity; the log carries only the
+ commitment + the opaque `salt_ref` they supplied.
 - **No clock-interval checkpointing.** Heads are signed at append
-  time only; a larger deployment would checkpoint on a clock
-  interval in addition (a pure addition of more valid heads; the
-  verification protocol does not change).
+ time only; a larger deployment would checkpoint on a clock
+ interval in addition (a pure addition of more valid heads; the
+ verification protocol does not change).
 - **No M-of-K today.** The master-quorum verification is implemented
-  in `unidpp-signatif` and composed into this binary's wire formats
-  (STH, inclusion proof, log-of-logs commitment); running multiple
-  instances and aggregating is a deployment step, not a code step.
+ in `unidpp-signatif` and composed into this binary's wire formats
+ (STH, inclusion proof, log-of-logs commitment); running multiple
+ instances and aggregating is a deployment step, not a code step.
 - **Logs anchor commitments, not facts.** The submitter's `subject`
-  field is operator-side record-keeping and rides in the journal but
-  is *never* hashed into the tree (PLAN.md enumeration resistance).
+ field is operator-side record-keeping and rides in the journal but
+ is *never* hashed into the tree (the UniDPP design framework enumeration resistance).
