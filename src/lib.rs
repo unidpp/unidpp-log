@@ -1,7 +1,6 @@
 //! UniDPP transparency-log anchor service (crate `unidpp-log`).
 //!
-//! Part of UniDPP (github.com/unidpp) — part of UniDPP
-//! `10-remaining-tasks-definitive.md` item 21: the *minimal credible*
+//! Part of UniDPP (github.com/unidpp): the *minimal credible*
 //! transparency-log anchor. `POST /commitments` sequences a subject
 //! identity + commitment hash and returns a **signed, sequenced
 //! inclusion receipt** (Merkle leaf index, path, signed tree head);

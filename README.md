@@ -2,8 +2,7 @@
 
 The UniDPP **transparency-log anchor service**: a minimal, honest
 operator that sequences Merkle commitments and issues signed
-inclusion receipts. Part of [UniDPP](https://github.com/unidpp);
-part of UniDPP `10-remaining-tasks-definitive.md` item 21.
+inclusion receipts. Part of [UniDPP](https://github.com/unidpp).
 Apache-2.0.
 
 ## What this is (and what it deliberately is not)
@@ -105,7 +104,7 @@ Public (reads):
 |---|---|
 | `GET /` | discovery document (endpoints, operator public key, conventions, M-of-K roadmap) |
 | `GET /healthz` | liveness |
-| `GET /tree/head` | the latest signed tree head (append-time checkpoint, monotonic in `tree_size`) |
+| `GET /tree/head` | the latest signed tree head (append-time checkpoint, monotonic in `tree_size`), with the external time-stamp anchor when one is configured |
 | `GET /tree/consistency?from=N` | RFC 6962 consistency proof from the prefix of size `N` to the current head |
 | `GET /receipt/{seq}` | re-serve the receipt for entry `seq` (byte-identical to its `POST /commitments` response) |
 
@@ -159,6 +158,48 @@ integrity error — a transparency log's whole value is that it cannot
 quietly lose the middle. Operator must explain the hole; the service
 must not paper over it.
 
+## External time-stamp anchoring (RFC 3161)
+
+With `UNIDPP_LOG_EXTERNAL_TSA_URL` set, every append's tree head is
+additionally anchored to an external time-stamping authority after
+the local signature: the submission is additive and never gates the
+append. The service posts the signatif-built DER `TimeStampReq`
+(`application/timestamp-query`, plain HTTP — terminate TLS at a
+fronting proxy, the house doctrine) and stores the `TimeStampResp`.
+Full response verification (the TSA's CMS signature against its
+trust anchors) is deployment-side; what is checked here, offline and
+always: the stored response is well-formed DER whose embedded
+`messageImprint` digest equals the head's committed digest — a
+response for any other document never verifies.
+
+`GET /tree/head` carries the anchor record: the method, the committed
+digest, and the submission record — `anchored` (response bytes,
+base64) or `unreachable` (the explicit degradation, with `retry_at`
+— a conservative back-off). A record for an earlier head reports
+`stale` rather than claiming this head is anchored; no TSA
+configured reports `not-configured`. An unreachable or foreign TSA
+**degrades explicitly**; nothing is faked and nothing is silently
+skipped:
+
+```json
+"external_anchor": {
+  "method": "rfc3161",
+  "digest": "…64-hex sha-256 of the head's canonical bytes…",
+  "submission": {
+    "status": "unreachable",
+    "tsa_url": "http://tsa.example/timestamp",
+    "tree_size": 42,
+    "digest": "…",
+    "submitted_at": "2026-09-07T18:44:02Z",
+    "retry_at": "2026-09-07T18:45:02Z"
+  }
+}
+```
+
+The integration tests run a mock RFC 3161 responder: a stored
+response binds to the head's digest, an unreachable TSA degrades
+with the retry hint, and the append path completes regardless.
+
 ## Configuration
 
 | Env var | Default | Meaning |
@@ -169,6 +210,7 @@ must not paper over it.
 | `UNIDPP_LOG_SEED` | `unidpp-log-dev-seed-v1` | **DEV-ONLY seed** that drives `KeyPair::seeded`; the README warns this is unsafe for production (every consumer produces the same key). Production keys must come from a CSPRNG and live in an HSM. |
 | `UNIDPP_LOG_STATE_FILE` | unset (in-memory) | path to the JSONL journal |
 | `UNIDPP_LOG_APPEND_TOKEN` | unset (open) | Bearer token required on `POST /commitments` when set |
+| `UNIDPP_LOG_EXTERNAL_TSA_URL` | unset | RFC 3161 TSA endpoint for external head anchoring (see above) |
 
 ## M-of-K quorum design (the succession story)
 
@@ -204,7 +246,7 @@ as witness material in step 3. The semantic upgrade is the
 ```
 cargo fmt --check # clean
 cargo build # zero warnings (RUSTFLAGS="-D warnings" passes)
-cargo test # 17 unit + 10 integration, zero warnings
+cargo test # 21 unit + 13 integration, zero warnings
 cargo clippy --all-targets -- -D warnings # clean
 ```
 
@@ -229,7 +271,10 @@ receipt's inclusion proof no longer reconstructs any honest root,
 the pinned STH still verifies cryptographically but the
 consistency proof from the pinned size fails); torn-tail tolerated,
 sequence gaps refused; ECDSA-P256 operator suite; receipt
-timestamps match journal stamps.
+timestamps match journal stamps; and the external-anchor story
+against a mock RFC 3161 responder (a stored response binds to the
+head's digest; an unreachable TSA degrades with the retry hint while
+the append path completes).
 
 ## Deviations from the rubric (documented)
 
