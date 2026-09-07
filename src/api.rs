@@ -43,6 +43,10 @@ pub struct Config {
     pub append_token: Option<String>,
     /// Optional JSONL journal file (append-only, replayed on start).
     pub state_file: Option<PathBuf>,
+    /// Optional RFC 3161 TSA endpoint (`UNIDPP_LOG_EXTERNAL_TSA_URL`):
+    /// every append's tree head is also anchored externally. An
+    /// unreachable TSA degrades explicitly — never silently skipped.
+    pub external_tsa_url: Option<String>,
 }
 
 impl Default for Config {
@@ -56,6 +60,7 @@ impl Default for Config {
             },
             append_token: None,
             state_file: None,
+            external_tsa_url: None,
         }
     }
 }
@@ -80,6 +85,11 @@ impl Config {
                 c.state_file = Some(PathBuf::from(path));
             }
         }
+        if let Ok(url) = std::env::var("UNIDPP_LOG_EXTERNAL_TSA_URL") {
+            if !url.trim().is_empty() {
+                c.external_tsa_url = Some(url.trim().to_string());
+            }
+        }
         Ok(c)
     }
 }
@@ -90,6 +100,9 @@ pub struct AppState {
     pub config: Config,
     pub operator: Operator,
     pub store: Mutex<LogStore>,
+    /// The latest external-anchor submission (anchored response or the
+    /// explicit unreachable degradation).
+    pub tsa: Mutex<Option<crate::tsa::TsaRecord>>,
 }
 
 impl AppState {
@@ -101,6 +114,7 @@ impl AppState {
             config,
             operator,
             store: Mutex::new(store),
+            tsa: Mutex::new(None),
         })
     }
 }
@@ -280,6 +294,28 @@ async fn commit(State(app): State<Arc<AppState>>, headers: HeaderMap, body: Stri
                 .to_json(&app.operator.info())
             })
     };
+    // The external anchor is additive and best-effort-by-degradation:
+    // it never gates the append, and its outcome (anchored response or
+    // explicit unreachable) is stored for the head view.
+    if let Some(tsa_url) = app.config.external_tsa_url.clone() {
+        let head = {
+            let store = app.store.lock().expect("store poisoned");
+            current_head(&store, app.operator.log_id(), app.operator.key())
+        };
+        if let Some(sth) = head {
+            let anchored = sth.clone().anchored_externally(
+                unidpp_signatif::anchor::ExternalAnchorMethod::Rfc3161 {
+                    tsa_url: tsa_url.clone(),
+                },
+            );
+            let Some(anchor) = anchored.external_anchor.as_ref() else {
+                unreachable!("anchored_externally attaches the anchor");
+            };
+            let mut record = crate::tsa::submit_anchor(anchor, &tsa_url).await;
+            record.tree_size = sth.tree_size;
+            *app.tsa.lock().expect("tsa poisoned") = Some(record);
+        }
+    }
     match outcome {
         Ok(receipt) => json_response(StatusCode::CREATED, &receipt),
         Err(e) => store_error(e),
@@ -308,6 +344,7 @@ async fn tree_head(State(app): State<Arc<AppState>>) -> Response {
                     .map(|v| hex_encode(v))
                     .unwrap_or_default()
             },
+            "external_anchor": external_anchor_view(&app, &sth),
             "operator": app.operator.info(),
         }),
         None => json!({
@@ -320,6 +357,34 @@ async fn tree_head(State(app): State<Arc<AppState>>) -> Response {
         }),
     };
     json_response(StatusCode::OK, &body)
+}
+
+/// The external-anchor view for the head response: the RFC 3161
+/// commitment (digest + payload, from the signatif anchor) plus the
+/// submission record — `anchored` with the stored response, or the
+/// explicit `unreachable` degradation with its retry hint.
+fn external_anchor_view(
+    app: &Arc<AppState>,
+    sth: &unidpp_signatif::anchor::SignedTreeHead,
+) -> Value {
+    let record = app.tsa.lock().expect("tsa poisoned").clone();
+    let Some(record) = record else {
+        return json!({ "status": "not-configured" });
+    };
+    if record.tree_size != sth.tree_size {
+        // A stale record (an older head's submission): report it as
+        // such rather than claiming this head is anchored.
+        return json!({
+            "status": "stale",
+            "anchored_tree_size": record.tree_size,
+            "detail": "the record anchors an earlier head",
+        });
+    }
+    json!({
+        "method": "rfc3161",
+        "digest": record.digest.hex(),
+        "submission": record.to_wire(),
+    })
 }
 
 /// GET /tree/consistency?from=N — RFC 6962 consistency proof from the

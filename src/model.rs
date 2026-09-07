@@ -130,6 +130,7 @@ impl Receipt {
                 timestamp: logged_at,
                 root,
                 signature,
+                external_anchor: None,
             },
         })
     }
@@ -174,6 +175,7 @@ pub fn current_head(store: &LogStore, log_id: &str, operator: &KeyPair) -> Optio
         timestamp,
         root,
         signature,
+        external_anchor: None,
     })
 }
 
@@ -301,6 +303,7 @@ pub fn sth_from_json(v: &Value) -> Result<SignedTreeHead, String> {
             key_id,
             signature: Some(value),
         },
+        external_anchor: None,
     })
 }
 

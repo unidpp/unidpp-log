@@ -45,6 +45,7 @@ pub mod keyring;
 pub mod model;
 pub mod store;
 pub mod tree;
+pub mod tsa;
 
 pub use api::{run, Config, TestServer};
 pub use keyring::{Operator, OperatorConfig};
