@@ -162,21 +162,40 @@ struct Tlv<'a> {
     raw_len: usize,
 }
 
-/// One DER TLV at the head of `bytes` (short-form lengths only —
-/// RFC 3161 payloads of one digest never need the long form).
+/// One DER TLV at the head of `bytes` (definite lengths, short and
+/// long form — real `TimeStampResp`s are kilobytes, so the long form
+/// `0x30 0x82 lo hi` is the norm, not the exception).
 fn der_tlv(bytes: &[u8]) -> Option<Tlv<'_>> {
     if bytes.len() < 2 {
         return None;
     }
     let tag = bytes[0];
-    let length = bytes[1] as usize;
-    if bytes.len() < 2 + length {
+    // (content length, header length): short form is one length byte;
+    // 0x81..0x84 carry 1..4 big-endian length bytes after it.
+    let (content_len, header_len) = match bytes[1] {
+        0..=0x7f => (bytes[1] as usize, 2),
+        0x81 if bytes.len() >= 3 => (bytes[2] as usize, 3),
+        0x82 if bytes.len() >= 4 => (u16::from_be_bytes([bytes[2], bytes[3]]) as usize, 4),
+        0x83 if bytes.len() >= 5 => (
+            u32::from_be_bytes([0, bytes[2], bytes[3], bytes[4]]) as usize,
+            5,
+        ),
+        0x84 if bytes.len() >= 6 => (
+            u32::from_be_bytes([bytes[2], bytes[3], bytes[4], bytes[5]]) as usize,
+            6,
+        ),
+        // Indefinite lengths and >4-byte lengths do not occur in
+        // RFC 3161 responses.
+        _ => return None,
+    };
+    let total = header_len + content_len;
+    if bytes.len() < total {
         return None;
     }
     Some(Tlv {
         tag,
-        value: &bytes[2..2 + length],
-        raw_len: 2 + length,
+        value: &bytes[header_len..total],
+        raw_len: total,
     })
 }
 
@@ -351,6 +370,28 @@ mod tests {
         let digest = Hash::from_slice(&[7u8; 32]).unwrap();
         let response = response_with_digest(&[7u8; 32]);
         verify_timestamp_response(&response, &digest).unwrap();
+    }
+
+    #[test]
+    fn long_form_der_responses_parse_and_bind() {
+        // A real TimeStampResp shape: kilobyte bodies force the DER
+        // long form (0x30 0x82 hi lo). Build one carrying the digest.
+        let digest = [7u8; 32];
+        let filler = [0x41u8; 300];
+        let inner = der_seq(&[&der_octets(&digest), &filler]);
+        let body = der_seq(&[&der_seq(&[&der_int(0)]), &inner]);
+        // Rewrite the outer SEQUENCE with the long form.
+        let content = &body[2..];
+        let mut long = vec![0x30, 0x82];
+        long.extend_from_slice(&(content.len() as u16).to_be_bytes());
+        long.extend_from_slice(content);
+        assert_eq!(
+            &body[2..],
+            &long[4..],
+            "the long form carries the same content"
+        );
+        verify_timestamp_response(&long, &Hash::from_slice(&digest).unwrap()).unwrap();
+        assert!(verify_timestamp_response(&long, &Hash::from_slice(&[9u8; 32]).unwrap()).is_err());
     }
 
     #[test]
