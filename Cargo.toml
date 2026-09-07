@@ -1,0 +1,23 @@
+[package]
+name = "unidpp-log"
+description = "UniDPP transparency-log anchor service: sequenced Merkle commitments, signed inclusion receipts, monotonic signed tree heads, journal replay"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/unidpp/unidpp-log"
+rust-version = "1.75"
+
+# The Merkle/STH *semantics* (Confium transparency-log constants, signed
+# tree-head shape and canonical bytes, inclusion/consistency verification,
+# seeded operator keys) are delegated to unidpp-signatif — this service adds
+# the operational structure: O(log n) cached-level tree, sequencing,
+# JSONL journal durability, receipts, and the HTTP surface. Server
+# conventions mirror unidpp-registry / unidpp-resolver (axum over tokio,
+# dependency-light: no tracing, no metrics, no TLS stack, no database).
+[dependencies]
+unidpp-model = { path = "../unidpp-core/crates/model" }
+unidpp-signatif = { path = "../unidpp-signatif" }
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "net", "io-util", "rt-multi-thread", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
