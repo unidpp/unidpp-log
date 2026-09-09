@@ -216,6 +216,8 @@ fn require_append(app: &AppState, headers: &HeaderMap) -> Option<Response> {
 async fn discovery(State(app): State<Arc<AppState>>) -> Response {
     let doc = json!({
         "service": "unidpp-log",
+        "version": env!("CARGO_PKG_VERSION"),
+        "build_id": option_env!("UNIDPP_BUILD_ID").unwrap_or("dev"),
         "description": "UniDPP transparency-log anchor: sequenced Merkle commitments with signed inclusion receipts and monotonic signed tree heads",
         "log_id": app.operator.log_id(),
         "tree": "RFC 6962 Merkle tree over sequenced commitment leaves (Confium transparency-log constants 0x01/0x02, via unidpp-signatif)",
